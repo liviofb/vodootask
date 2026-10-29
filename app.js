@@ -998,17 +998,19 @@ function updateTimelineNowIndicator(now = new Date()) {
 
   const pct = Math.max(0, Math.min(100, ((currentDayMinutes - cycleStartMin) / totalCycleMin) * 100));
   lineEl.style.display = "block";
-  lineEl.style.left = `${pct.toFixed(2)}%`;
+  lineEl.style.left = `${pct.toFixed(3)}%`;
 
   const hh = String(now.getHours()).padStart(2, "0");
   const mm = String(now.getMinutes()).padStart(2, "0");
-  badgeText.textContent = `${hh}:${mm}`;
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  // Atualiza em tempo real a cada segundo com precisão de segundos (HH:MM:SS)
+  badgeText.textContent = `${hh}:${mm}:${ss}`;
 
   // Ajusta alinhamento do badge nas extremidades para não vazar a borda
-  if (pct < 4) {
+  if (pct < 5) {
     badgeEl.style.left = "0";
     badgeEl.style.transform = "translateX(0)";
-  } else if (pct > 96) {
+  } else if (pct > 95) {
     badgeEl.style.left = "auto";
     badgeEl.style.right = "0";
     badgeEl.style.transform = "translateX(0)";
@@ -1019,8 +1021,9 @@ function updateTimelineNowIndicator(now = new Date()) {
   }
 }
 
-// Atualiza o preenchimento das barras de progresso na timeline a cada segundo
+// Atualiza o preenchimento das barras de progresso e o tempo em tempo real dos blocos na timeline a cada segundo
 function updateTimelineProgressBars(now) {
+  const isToday = (selectedViewDate === getTodayDateString());
   const currentDayMinutes = now.getHours() * 60 + now.getMinutes() + (now.getSeconds() / 60);
 
   document.querySelectorAll(".timeline-block").forEach(blockEl => {
@@ -1033,7 +1036,9 @@ function updateTimelineProgressBars(now) {
     const durM = Math.max(1, endM - startM);
 
     let fillPct = 0;
-    if (currentDayMinutes > startM) {
+    const isCurrentActive = isToday && (currentDayMinutes >= startM && currentDayMinutes < endM);
+
+    if (isToday && currentDayMinutes > startM) {
       if (currentDayMinutes >= endM) {
         fillPct = 100;
       } else {
@@ -1041,9 +1046,34 @@ function updateTimelineProgressBars(now) {
       }
     }
 
+    blockEl.classList.toggle("is-active-running", isCurrentActive);
+
     const fillEl = blockEl.querySelector(".timeline-block-progress-fill");
     if (fillEl) {
       fillEl.style.width = `${fillPct.toFixed(1)}%`;
+    }
+
+    // Atualiza o indicador de tempo da timeline em tempo real (NÃO mostra hora total fixa do bloco)
+    const durLabel = document.querySelector(`.duration-label[data-block-id="${bId}"]`);
+    if (durLabel) {
+      if (!isToday) {
+        durLabel.style.display = "none";
+      } else if (isCurrentActive) {
+        durLabel.style.display = "block";
+        const elapsedSecTotal = Math.floor((currentDayMinutes - startM) * 60);
+        const elHours = Math.floor(elapsedSecTotal / 3600);
+        const elMin = Math.floor((elapsedSecTotal % 3600) / 60);
+        const elSec = elapsedSecTotal % 60;
+        const timeFormatted = elHours > 0 
+          ? `${String(elHours).padStart(2, "0")}:${String(elMin).padStart(2, "0")}:${String(elSec).padStart(2, "0")}`
+          : `${String(elMin).padStart(2, "0")}:${String(elSec).padStart(2, "0")}`;
+
+        durLabel.textContent = `⏱ ${timeFormatted}`;
+        durLabel.title = `Tempo decorrido em tempo real: ${timeFormatted}`;
+      } else {
+        // Para blocos futuros ou já concluídos, não exibe a hora total fixa do bloco
+        durLabel.style.display = "none";
+      }
     }
   });
 }
@@ -1329,17 +1359,20 @@ function renderTimeline() {
 
     track.appendChild(blockEl);
 
-    // Label com a duração embaixo do bloco (como 2,4h, 1,8h)
+    // Label de tempo em tempo real embaixo do bloco (NÃO mostra hora total fixa do bloco)
     if (widthPercent > 4.5) {
       const durLabel = document.createElement("div");
       durLabel.className = "duration-label";
+      durLabel.dataset.blockId = block.id;
       durLabel.style.left = `${leftPercent + (widthPercent / 2)}%`;
-      durLabel.textContent = formatHoursDecimal(durationHours);
+      durLabel.style.display = "none"; // Ativado dinamicamente para o bloco em andamento
+      durLabel.textContent = "";
       durationsContainer.appendChild(durLabel);
     }
   });
 
   refreshLucideIcons();
+  updateTimelineProgressBars(new Date());
 }
 
 // Renderiza Métricas baseadas no tempo real das tarefas e intervalos
