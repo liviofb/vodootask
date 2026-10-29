@@ -49,13 +49,7 @@
         </button>
       </div>
 
-      <!-- Acoes de Backup e Ciclo -->
-      <div class="header-right-actions">
-        <button type="button" class="backup-toggle-btn" id="openBackupModalBtn" title="Backup e Restauracao das Tarefas">
-          <i data-lucide="database" class="app-icon"></i>
-          <span>Backup</span>
-        </button>
-        <!-- Ciclo do Dia no Canto Superior Direito -->
+      <!-- Ciclo do Dia no Canto Superior Direito -->
       <div class="cycle-limits-top">
         <button type="button" class="cycle-clock-btn" id="openCycleModalBtn" title="Clique para definir o ciclo do dia">
           <span class="clock-icon"><i data-lucide="clock" class="app-icon"></i></span>
@@ -63,7 +57,6 @@
           <strong id="cycleRangeDisplay">08:00 — 20:00</strong>
           <span class="cycle-badge" id="cycleTotalIndicator">12,0h</span>
         </button>
-      </div>
       </div>
     </header>
 
@@ -121,6 +114,11 @@
         <div class="staged-empty-msg" id="stagedEmptyMsg" style="display: none;">
           Nenhuma tarefa em espera. Crie blocos antecipados para arrastar para a linha do tempo!
         </div>
+        <!-- Botão Pequeno de Backup no Canto Inferior Direito do Frame Pontilhado -->
+        <button type="button" class="staged-backup-corner-btn" id="openBackupModalBtn" title="Backup e Restauração de Tarefas">
+          <i data-lucide="database" class="app-icon"></i>
+          <span>Backup</span>
+        </button>
       </div>
     </section>
   </div>

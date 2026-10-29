@@ -2869,3 +2869,43 @@ input[type="time"].subtask-clock-input {
     grid-template-columns: 1fr;
   }
 }
+
+/* Botão Pequeno de Backup no Canto Inferior Direito do Frame Pontilhado */
+.staged-backup-corner-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #0D0D0D;
+  border: 1px solid #444444;
+  color: #888888;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%);
+  transition: all 0.12s ease;
+  z-index: 5;
+  opacity: 0.6;
+}
+
+.staged-backup-corner-btn:hover {
+  background: var(--color-orange);
+  color: #000000;
+  border-color: #000000;
+  opacity: 1;
+  box-shadow: 2px 2px 0px #FFFFFF;
+  transform: translateY(-1px);
+}
+
+.staged-backup-corner-btn svg,
+.staged-backup-corner-btn .app-icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.2px;
+}
