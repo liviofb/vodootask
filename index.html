@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Planejador de Blocos de Tempo</title>
+  
+  <!-- Web App & PWA Settings (Compatibilidade Android / Chrome / iOS) -->
+  <meta name="theme-color" content="#12151c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23FFE600'><path d='M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H6v-2h6v2zm4-4H6v-2h10v2zm0-4H6V7h10v2z'/></svg>">
+  
+  <!-- Fontes Brutalistas / Editorial Suíço: Syne / Space Grotesk / Bebas Neue / JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  
+  <!-- Ícones Lucide (Estilo clean, monocromático e estêncil) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Motor SQLite WebAssembly (Offline local) -->
+  <script src="sql-wasm.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header Superior: Relógio com Calendário à Esquerda e Ciclo do Horário à Direita -->
+    <header class="app-header-top">
+      <div class="clock-display-group">
+        <div class="clock-display-widget">
+          <div class="clock-display-icon">
+            <i data-lucide="clock" class="app-icon"></i>
+          </div>
+          <div class="clock-display-info">
+            <div class="clock-display-time" id="liveClockTime">00:00:00</div>
+            <div class="clock-display-date" id="liveClockDate">Carregando data...</div>
+          </div>
+        </div>
+
+        <!-- Botão do Calendário (Ao lado direito das horas) -->
+        <button type="button" class="calendar-toggle-btn" id="openCalendarModalBtn" title="Abrir Calendário de Dias">
+          <i data-lucide="calendar" class="app-icon"></i>
+          <span class="calendar-btn-label" id="currentViewDateLabel">Hoje</span>
+          <span class="calendar-badge-indicator" id="calendarPastBadge" style="display: none;">Histórico</span>
+        </button>
+      </div>
+
+      <!-- Ciclo do Dia no Canto Superior Direito -->
+      <div class="cycle-limits-top">
+        <button type="button" class="cycle-clock-btn" id="openCycleModalBtn" title="Clique para definir o ciclo do dia">
+          <span class="clock-icon"><i data-lucide="clock" class="app-icon"></i></span>
+          <span class="clock-label">Ciclo // Horário:</span>
+          <strong id="cycleRangeDisplay">08:00 — 20:00</strong>
+          <span class="cycle-badge" id="cycleTotalIndicator">12,0h</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Linha do Tempo Visual (Visualizador dos Blocos tipo o print) -->
+    <main class="timeline-card">
+      <div class="timeline-header-hours" id="timelineHours">
+        <!-- Marcadores 08:00, 09:00, ... -->
+      </div>
+
+      <div class="timeline-bar-wrapper">
+        <div class="timeline-ruler" id="timelineRuler">
+          <!-- Linhas de régua de 5 em 5 minutos geradas via JS -->
+        </div>
+        <div class="timeline-track" id="timelineTrack">
+          <!-- Blocos coloridos preenchidos dinamicamente -->
+        </div>
+        <!-- Botão compacto de Snap no canto inferior direito da timeline -->
+        <button type="button" class="timeline-snap-icon-btn active" id="snapToggleBtn" title="Encaixe Magnético (5m): Ativado">
+          <span class="snap-mini-icon"><i data-lucide="magnet" class="app-icon"></i></span>
+        </button>
+      </div>
+
+      <div class="timeline-durations" id="timelineDurations">
+        <!-- Rótulos de horas embaixo dos blocos ex: 2,4h -->
+      </div>
+
+      <hr class="divider">
+
+      <!-- Métricas Resumo -->
+      <div class="metrics-grid" id="metricsGrid">
+        <!-- Ex: Foco Trabalho, Foco Portfólio, Tempo Produtivo -->
+      </div>
+    </main>
+
+    <!-- Seção de Banco de Tarefas Não Agendadas (Para criar antes e arrastar) -->
+    <section class="staged-section">
+      <div class="section-title-bar">
+        <div class="title-with-pill">
+          <h2>Tarefas Criadas / Não Agendadas</h2>
+          <span class="count-pill" id="stagedCountPill">0</span>
+        </div>
+        <div class="section-actions">
+          <span class="badge-hint">Arraste para a linha do tempo ou clique para agendar</span>
+          <button id="openLibraryBtn" class="btn-secondary" title="Abrir Biblioteca de Tarefas Salvas">
+            <i data-lucide="bookmark" class="app-icon"></i>
+            <span>Biblioteca de Tarefas</span>
+          </button>
+          <button id="addBlockBtn" class="btn-primary" title="Adicionar Bloco">+ Novo Bloco</button>
+        </div>
+      </div>
+      <div class="staged-drop-area" id="stagedDropArea">
+        <div class="staged-list" id="stagedList">
+          <!-- Blocos guardados em espera gerados via JS -->
+        </div>
+        <div class="staged-empty-msg" id="stagedEmptyMsg" style="display: none;">
+          Nenhuma tarefa em espera. Crie blocos antecipados para arrastar para a linha do tempo!
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- MODAL DE DETALHES DO BLOCO & SUBTAREFAS -->
+  <div class="modal-overlay" id="blockModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="block-color-indicator" id="modalBlockColor"></span>
+          <h3 id="modalBlockTitle">Nome da Tarefa Principal</h3>
+        </div>
+        <button class="modal-close" id="closeModalBtn" aria-label="Fechar">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-block-meta">
+          <span class="meta-tag" id="modalTimeRange">08:00 - 10:24</span>
+          <span class="meta-tag" id="modalDuration">2.4h de duração</span>
+          <span class="meta-tag" id="modalSubtasksCount">0/0 concluídas</span>
+        </div>
+
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="modalProgressBar"></div>
+        </div>
+
+        <div class="subtasks-section">
+          <div class="subtasks-header-row">
+            <h4>Subtarefas deste Bloco</h4>
+            <div class="subtasks-budget-indicator" id="subtasksBudgetIndicator">
+              Alocado: <strong id="subtasksTotalAllocated">0m</strong> / <span id="subtasksBlockMax">60m</span>
+            </div>
+          </div>
+          <p class="subtasks-desc">Divida esta tarefa em passos menores com tempo estimado proporcional:</p>
+          
+          <form class="add-subtask-form" id="addSubtaskForm">
+            <input type="text" id="newSubtaskInput" placeholder="Ex: Pesquisar referências..." required style="flex: 2;">
+            <div class="subtask-time-input-wrap" title="Duração estimada da subtarefa (horas:minutos)">
+              <span class="subtask-clock-prefix"><i data-lucide="clock" class="app-icon"></i></span>
+              <input type="time" id="newSubtaskDurationTime" value="00:30" required class="subtask-clock-input">
+            </div>
+            <button type="submit" class="btn-primary-small" id="addSubtaskSubmitBtn">+ Adicionar</button>
+          </form>
+
+          <div class="subtask-error-msg" id="subtaskErrorMsg" style="display: none;"></div>
+
+          <ul class="subtasks-list" id="subtasksList">
+            <!-- Itens de subtarefa com checkbox, texto, tempo e botão excluir -->
+          </ul>
+        </div>
+
+        <!-- Opções rápidas do bloco -->
+        <div class="block-edit-actions">
+          <div class="block-edit-actions-main">
+            <button id="toggleStagedBlockBtn" class="btn-action-equal">Mover para Espera</button>
+            <button id="editBlockDetailsBtn" class="btn-action-equal">Editar Tarefa</button>
+          </div>
+          <button id="duplicateBlockBtn" class="btn-icon-action" title="Duplicar este Bloco" aria-label="Duplicar Bloco">
+            <i data-lucide="copy" class="app-icon"></i>
+          </button>
+          <button id="saveBlockToDbBtn" class="btn-icon-action btn-save-db" title="Salvar cópia na Biblioteca de Tarefas" aria-label="Salvar na Biblioteca de Tarefas">
+            <i data-lucide="bookmark" class="app-icon"></i>
+          </button>
+          <button id="deleteBlockBtn" class="btn-icon-danger" title="Excluir Bloco" aria-label="Excluir Bloco">
+            <i data-lucide="trash-2" class="app-icon"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL EDITAR/CRIAR BLOCO -->
+  <div class="modal-overlay" id="editBlockModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 id="editModalHeading">Editar Bloco de Tarefa</h3>
+        <button class="modal-close" id="closeEditModalBtn">&times;</button>
+      </div>
+      <form id="blockForm" class="modal-body modal-form">
+        <div class="form-group">
+          <label for="blockTitleInput">Título do Bloco / Tarefa Maior</label>
+          <input type="text" id="blockTitleInput" placeholder="Ex: Trabalho em casa" required>
+        </div>
+
+        <div class="form-row form-row-custom">
+          <div class="form-group form-flex-1">
+            <label>Ícone</label>
+            <div class="icon-picker-anchor">
+              <button type="button" class="icon-picker-btn" id="iconPickerBtn" title="Escolha um ícone da lista">
+                <span id="selectedIconDisplay">Nenhum</span>
+                <span class="icon-chevron">▾</span>
+              </button>
+              <input type="hidden" id="blockIconInput" value="">
+              
+              <!-- Popover com grade de ícones pré-selecionados -->
+              <div class="icon-picker-dropdown" id="iconPickerDropdown" style="display: none;">
+                <div class="icon-picker-header">
+                  <span>Escolha um ícone</span>
+                  <button type="button" class="btn-clear-icon" id="clearIconBtn">Remover</button>
+                </div>
+                <div class="icon-grid" id="iconGrid">
+                  <!-- Ícones injetados via JS -->
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="form-group form-flex-2">
+            <label>Cor do Bloco</label>
+            <div class="color-swatches-wrap" id="colorSwatchesWrap">
+              <!-- Swatches de cores pré-definidas geradas via JS -->
+              <div class="color-swatches-list" id="colorSwatchesList"></div>
+              
+              <!-- Botão/Ícone para personalizar cor -->
+              <label class="color-custom-btn" title="Personalizar cor livremente" for="blockColorInput">
+                <i data-lucide="pipette" class="app-icon"></i>
+                <input type="color" id="blockColorInput" value="#FF4500" class="color-picker-input-hidden">
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Duração Estimada com seletor limpo de relógio (hh:mm) -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="blockDurationTime">Duração Estimada (Horas : Minutos)</label>
+            <div class="time-clock-input-wrap">
+              <span class="clock-field-icon"><i data-lucide="clock" class="app-icon"></i></span>
+              <input type="time" id="blockDurationTime" value="01:00" required class="clock-field-input" title="Escolha a quantidade de horas e minutos">
+            </div>
+            <input type="hidden" id="blockDurationInput" value="60">
+          </div>
+
+          <div class="form-group">
+            <label for="blockScheduleType">Onde colocar?</label>
+            <select id="blockScheduleType">
+              <option value="timeline">Adicionar à Linha do Tempo</option>
+              <option value="staged">Salvar em Espera (Criar antecipadamente)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelBlockFormBtn">Cancelar</button>
+          <button type="submit" class="btn-primary">Salvar Bloco</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL DE SELEÇÃO DE TAREFA (QUANDO A TIMELINE ESTÁ VAZIA) -->
+  <div class="modal-overlay" id="selectTaskModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>Adicionar Tarefa ao Cronograma</h3>
+        <button class="modal-close" id="closeSelectTaskModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="subtasks-desc">Escolha uma tarefa já criada da sua lista de espera para colocar na linha do tempo, ou crie uma nova:</p>
+        
+        <div class="select-task-list" id="selectTaskList">
+          <!-- Lista de tarefas em espera gerada dinamicamente -->
+        </div>
+
+        <div class="select-modal-actions">
+          <button id="createNewFromEmptyBtn" class="btn-primary" style="width: 100%;">+ Criar Nova Tarefa</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL PARA DEFINIR O CICLO DO DIA (HORÁRIO DE INÍCIO E FIM) -->
+  <div class="modal-overlay" id="cycleModal" aria-hidden="true">
+    <div class="modal-dialog" style="max-width: 440px;">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-header-icon"><i data-lucide="clock" class="app-icon"></i></span>
+          <h3>Definir Ciclo do Dia</h3>
+        </div>
+        <button class="modal-close" id="closeCycleModalBtn">&times;</button>
+      </div>
+      <form id="cycleForm" class="modal-body modal-form">
+        <p class="subtasks-desc">Escolha os horários de início e término do seu dia. As tarefas agendadas serão ajustadas automaticamente para preencher o período.</p>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label for="modalDayStartInput">Início do Dia</label>
+            <input type="time" id="modalDayStartInput" required>
+          </div>
+          <div class="form-group">
+            <label for="modalDayEndInput">Fim do Ciclo</label>
+            <input type="time" id="modalDayEndInput" required>
+          </div>
+        </div>
+
+        <div class="cycle-presets">
+          <span class="presets-title">Atalhos rápidos:</span>
+          <div class="presets-buttons">
+            <button type="button" class="preset-pill-btn" data-start="08:00" data-end="18:00">08:00 às 18:00 (10h)</button>
+            <button type="button" class="preset-pill-btn" data-start="09:00" data-end="18:00">09:00 às 18:00 (9h)</button>
+            <button type="button" class="preset-pill-btn" data-start="08:00" data-end="20:00">08:00 às 20:00 (12h)</button>
+            <button type="button" class="preset-pill-btn" data-start="10:00" data-end="16:00">10:00 às 16:00 (6h)</button>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelCycleModalBtn">Cancelar</button>
+          <button type="submit" class="btn-primary">Salvar Ciclo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL DE NOTIFICAÇÃO NO CENTRO DA TELA (FIM DA TAREFA) -->
+  <div class="modal-overlay" id="taskCompletePromptModal" aria-hidden="true">
+    <div class="modal-dialog modal-prompt-dialog">
+      <div class="modal-header modal-prompt-header">
+        <div class="modal-title-group">
+          <span class="modal-header-icon prompt-alarm-icon"><i data-lucide="bell" class="app-icon"></i></span>
+          <h3 id="promptModalTitle">Horário Concluído!</h3>
+        </div>
+      </div>
+      <div class="modal-body modal-prompt-body">
+        <div class="prompt-task-banner">
+          <div class="prompt-task-name" id="promptTaskName">Trabalho em Casa</div>
+          <div class="prompt-task-time" id="promptTaskTime">09:00 - 13:00</div>
+        </div>
+        <p class="prompt-question">O tempo previsto para este bloco terminou. Você conseguiu concluir esta tarefa?</p>
+        <div class="prompt-actions">
+          <button type="button" class="btn-secondary prompt-btn" id="promptBtnNo">Ainda não</button>
+          <button type="button" class="btn-primary prompt-btn" id="promptBtnYes">Sim, Concluir!</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE BIBLIOTECA DE TAREFAS (MODELOS SALVOS) -->
+  <div class="modal-overlay" id="libraryModal" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-header-icon"><i data-lucide="bookmark" class="app-icon"></i></span>
+          <h3>Biblioteca de Tarefas</h3>
+        </div>
+        <button class="modal-close" id="closeLibraryModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="subtasks-desc">Tarefas salvas para reutilização rápida a qualquer dia. Clique em <strong>+ Carregar</strong> para trazer uma cópia para o seu dia atual:</p>
+        
+        <div class="library-items-list" id="libraryItemsList">
+          <!-- Modelos de tarefas gerados via JS -->
+        </div>
+
+        <div class="library-empty-msg" id="libraryEmptyMsg" style="display: none;">
+          Nenhuma tarefa salva na biblioteca ainda.<br>
+          Para salvar, clique em qualquer tarefa e toque no ícone de <strong>Salvar (marcador)</strong>!
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DO CALENDÁRIO (HISTÓRICO E NAVEGAÇÃO DE DIAS) -->
+  <div class="modal-overlay" id="calendarModal" aria-hidden="true">
+    <div class="modal-dialog modal-calendar-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-header-icon"><i data-lucide="calendar" class="app-icon"></i></span>
+          <h3>Calendário de Operações</h3>
+        </div>
+        <button class="modal-close" id="closeCalendarModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="calendar-nav-bar">
+          <button type="button" class="btn-icon-action" id="calPrevMonthBtn" title="Mês Anterior">◀</button>
+          <span class="calendar-month-heading" id="calMonthHeading">OUTUBRO 2026</span>
+          <button type="button" class="btn-icon-action" id="calNextMonthBtn" title="Próximo Mês">▶</button>
+        </div>
+
+        <!-- Grade de Dias da Semana -->
+        <div class="calendar-weekdays-grid">
+          <span>DOM</span><span>SEG</span><span>TER</span><span>QUA</span><span>QUI</span><span>SEX</span><span>SÁB</span>
+        </div>
+
+        <!-- Grade de Dias do Mês -->
+        <div class="calendar-days-grid" id="calendarDaysGrid">
+          <!-- Gerado dinamicamente via JS -->
+        </div>
+
+        <div class="calendar-footer-actions">
+          <button type="button" class="btn-secondary" id="calGoTodayBtn">Ir para Hoje</button>
+          <span class="calendar-legend-hint">
+            <span class="dot-has-tasks"></span> Dias com tarefas registradas
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
