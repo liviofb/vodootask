@@ -3626,12 +3626,14 @@ function exportFullBackup() {
     backupData.dayStaged[selectedViewDate] = stagedBlocks;
     backupData.dayConfigs[selectedViewDate] = dayConfig;
 
-    // Exporta SQLite binario se disponivel
+    // Exporta SQLite binario de forma robusta e livre de limite de call stack
     if (sqliteDb) {
       const binaryDb = sqliteDb.export();
       let binaryString = '';
-      for (let i = 0; i < binaryDb.length; i++) {
-        binaryString += String.fromCharCode(binaryDb[i]);
+      const chunkSize = 8192;
+      for (let i = 0; i < binaryDb.length; i += chunkSize) {
+        const chunk = binaryDb.subarray(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, chunk);
       }
       backupData.sqliteBase64 = btoa(binaryString);
     }
@@ -3707,6 +3709,7 @@ function importFullBackup(file) {
       }
 
       // 4. Sobrescreve o SQLite via IndexedDB
+      let sqliteRestored = false;
       if (data.sqliteBase64 && typeof initSqlJs === 'function') {
         try {
           const binaryString = atob(data.sqliteBase64);
@@ -3717,6 +3720,7 @@ function importFullBackup(file) {
           const SQL = await initSqlJs({ locateFile: file => file });
           sqliteDb = new SQL.Database(bytes);
           await saveSqliteBytesToIndexedDB(bytes);
+          sqliteRestored = true;
         } catch (sqlErr) {
           console.warn('Aviso ao reconstruir SQLite binario, persistindo via estado LocalStorage:', sqlErr);
         }
@@ -3726,8 +3730,8 @@ function importFullBackup(file) {
       const targetDate = data.selectedViewDate || selectedViewDate || getTodayDateString();
       selectedViewDate = targetDate;
 
-      // Se o SQLite estiver ativo mas o arquivo importado for de um formato antigo sem binario, repopula o SQLite
-      if (sqliteDb && !data.sqliteBase64) {
+      // Se o SQLite esta ativo e nao foi restaurado via binario (ou falhou), popula a partir do JSON
+      if (sqliteDb && !sqliteRestored) {
         try {
           sqliteDb.run('DELETE FROM tasks; DELETE FROM day_config; DELETE FROM task_library;');
         } catch (_) {}
@@ -3735,6 +3739,8 @@ function importFullBackup(file) {
 
       // Carrega o dia selecionado e atualiza toda a timeline, espera e metricas
       loadStateFromSQLite(selectedViewDate);
+      // Garante que o SQLite e LocalStorage estejam 100% alinhados
+      persistToSQLite();
       saveAll();
       updateCalendarDateIndicator();
       renderAll();

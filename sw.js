@@ -1,4 +1,4 @@
-const CACHE_NAME = 'planejador-cache-v2';
+const CACHE_NAME = 'planejador-cache-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -29,8 +29,17 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
+// Estrategia Network-First: busca versao nova primeiro, garantindo atualizacoes no GitHub Pages
 self.addEventListener('fetch', (e) => {
   e.respondWith(
-    caches.match(e.request).then((res) => res || fetch(e.request))
+    fetch(e.request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, responseToCache));
+        }
+        return networkResponse;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

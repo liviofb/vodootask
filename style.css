@@ -2705,6 +2705,7 @@ input[type="time"].subtask-clock-input {
 @media (max-width: 680px) {
   body {
     padding: 10px 6px;
+    zoom: 1.25;
   }
 
   .timeline-card {
