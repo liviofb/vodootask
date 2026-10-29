@@ -2734,3 +2734,138 @@ input[type="time"].subtask-clock-input {
     justify-content: center;
   }
 }
+
+/* Modulo de Backup (Persona 5 / Brutalism) */
+.header-right-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.backup-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #000000;
+  border: 2px solid #FFFFFF;
+  box-shadow: 3px 3px 0px var(--color-orange), 5px 5px 0px #000000;
+  color: #FFFFFF;
+  padding: 8px 14px;
+  font-family: var(--font-condensed);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.backup-toggle-btn:hover {
+  background: var(--color-orange);
+  color: #000000;
+  border-color: #000000;
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 0px #FFFFFF, 7px 7px 0px #000000;
+}
+
+.backup-toggle-btn svg,
+.backup-toggle-btn .app-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2.2px;
+}
+
+.modal-backup-dialog {
+  max-width: 600px;
+}
+
+.backup-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 6px 0;
+}
+
+.backup-card {
+  background: #141414;
+  border: 1.5px solid #262626;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  box-shadow: 2px 2px 0px #000000;
+}
+
+.backup-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-orange);
+}
+
+.backup-card-head h4 {
+  font-family: var(--font-display);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #FFFFFF;
+  margin: 0;
+}
+
+.backup-card p {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #B3B3B3;
+  line-height: 1.4;
+  flex: 1;
+  margin: 0;
+}
+
+.backup-action-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.backup-file-label {
+  text-align: center;
+}
+
+.backup-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #080808;
+  border: 1px solid #222222;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #999999;
+}
+
+.backup-note svg,
+.backup-note .app-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-orange);
+  flex-shrink: 0;
+}
+
+@media (max-width: 680px) {
+  .header-right-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .backup-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}

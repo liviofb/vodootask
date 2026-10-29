@@ -3336,6 +3336,39 @@ function setupEvents() {
       renderCalendarDaysGrid();
     });
   }
+  // Eventos do Modal de Backup (Exportar e Importar)
+  const openBackupBtn = document.getElementById("openBackupModalBtn");
+  if (openBackupBtn) {
+    openBackupBtn.addEventListener("click", () => {
+      SoundFx.open();
+      openBackupModal();
+    });
+  }
+  const closeBackupBtn = document.getElementById("closeBackupModalBtn");
+  if (closeBackupBtn) {
+    closeBackupBtn.addEventListener("click", closeBackupModal);
+  }
+  const backupModal = document.getElementById("backupModal");
+  if (backupModal) {
+    backupModal.addEventListener("click", (e) => {
+      if (e.target.id === "backupModal") closeBackupModal();
+    });
+  }
+  const exportBtn = document.getElementById("exportBackupBtn");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", exportFullBackup);
+  }
+  const importFileInput = document.getElementById("importBackupFileInput");
+  if (importFileInput) {
+    importFileInput.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        importFullBackup(file);
+        e.target.value = "";
+      }
+    });
+  }
+
   const calGoTodayBtn = document.getElementById("calGoTodayBtn");
   if (calGoTodayBtn) {
     calGoTodayBtn.addEventListener("click", () => {
@@ -3534,3 +3567,161 @@ function registerPWA() {
 
 // Inicializar
 window.addEventListener("DOMContentLoaded", init);
+
+// ==========================================
+// MODULO DE BACKUP (EXPORTAR E IMPORTAR DADOS)
+// ==========================================
+
+function openBackupModal() {
+  const modal = document.getElementById('backupModal');
+  if (!modal) return;
+  modal.classList.add('active');
+  modal.setAttribute('aria-hidden', 'false');
+  refreshLucideIcons();
+}
+
+function closeBackupModal() {
+  const modal = document.getElementById('backupModal');
+  if (modal) {
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    SoundFx.close();
+  }
+}
+
+function exportFullBackup() {
+  try {
+    // Garante que o dia atual foi persistido antes de gerar o dump
+    persistToSQLite();
+
+    const backupData = {
+      version: 'vodootask_backup_v1',
+      exportedAt: new Date().toISOString(),
+      taskLibrary: taskLibrary || [],
+      dayConfigs: {},
+      dayBlocks: {},
+      dayStaged: {},
+      sqliteBase64: null
+    };
+
+    // Coleta dados de todos os dias salvos no localStorage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (key.startsWith('planner_blocks_') && key !== 'planner_blocks_clean') {
+        const d = key.replace('planner_blocks_', '');
+        try { backupData.dayBlocks[d] = JSON.parse(localStorage.getItem(key)); } catch (_) {}
+      } else if (key.startsWith('planner_staged_') && key !== 'planner_staged_blocks_clean') {
+        const d = key.replace('planner_staged_', '');
+        try { backupData.dayStaged[d] = JSON.parse(localStorage.getItem(key)); } catch (_) {}
+      } else if (key.startsWith('planner_day_config_') && key !== 'planner_day_config_v2') {
+        const d = key.replace('planner_day_config_', '');
+        try { backupData.dayConfigs[d] = JSON.parse(localStorage.getItem(key)); } catch (_) {}
+      }
+    };
+
+    // Garante dia atual no dump
+    backupData.dayBlocks[selectedViewDate] = blocks;
+    backupData.dayStaged[selectedViewDate] = stagedBlocks;
+    backupData.dayConfigs[selectedViewDate] = dayConfig;
+
+    // Exporta SQLite binario se disponivel
+    if (sqliteDb) {
+      const binaryDb = sqliteDb.export();
+      let binaryString = '';
+      for (let i = 0; i < binaryDb.length; i++) {
+        binaryString += String.fromCharCode(binaryDb[i]);
+      }
+      backupData.sqliteBase64 = btoa(binaryString);
+    }
+
+    const jsonString = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const downloadUrl = URL.createObjectURL(blob);
+
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const fileName = 'vodootask-backup-' + dateStr + '.json';
+
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+
+    SoundFx.success();
+    showNotificationFeedback('Backup exportado com sucesso!');
+  } catch (err) {
+    console.error('Erro ao exportar backup:', err);
+    alert('Erro ao gerar arquivo de backup. Verifique o console.');
+  }
+}
+
+function importFullBackup(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data || (!data.dayBlocks && !data.sqliteBase64 && !data.taskLibrary)) {
+        alert('Arquivo de backup invalido ou corrompido.');
+        return;
+      }
+
+      if (!confirm('Deseja realmente restaurar este backup? Suas tarefas atuais serao sincronizadas e mescladas com os dados do arquivo.')) {
+        return;
+      }
+
+      // Restaura Biblioteca
+      if (Array.isArray(data.taskLibrary)) {
+        taskLibrary = data.taskLibrary;
+        localStorage.setItem('planner_task_library_v1', JSON.stringify(taskLibrary));
+      }
+
+      // Restaura Dias no LocalStorage
+      if (data.dayBlocks) {
+        Object.keys(data.dayBlocks).forEach(d => {
+          localStorage.setItem('planner_blocks_' + d, JSON.stringify(data.dayBlocks[d]));
+        });
+      }
+      if (data.dayStaged) {
+        Object.keys(data.dayStaged).forEach(d => {
+          localStorage.setItem('planner_staged_' + d, JSON.stringify(data.dayStaged[d]));
+        });
+      }
+      if (data.dayConfigs) {
+        Object.keys(data.dayConfigs).forEach(d => {
+          localStorage.setItem('planner_day_config_' + d, JSON.stringify(data.dayConfigs[d]));
+        });
+      }
+
+      // Restaura SQLite se presente
+      if (data.sqliteBase64 && typeof initSqlJs === 'function') {
+        try {
+          const binaryString = atob(data.sqliteBase64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const SQL = await initSqlJs({ locateFile: file => file });
+          sqliteDb = new SQL.Database(bytes);
+          await saveSqliteBytesToIndexedDB(bytes);
+        } catch (sqlErr) {
+          console.warn('Aviso: falha ao reconstruir binario SQLite, mantendo restauracao via LocalStorage:', sqlErr);
+        }
+      }
+
+      // Recarrega estado do dia ativo
+      loadStateFromSQLite(selectedViewDate);
+      closeBackupModal();
+      SoundFx.success();
+      showNotificationFeedback('Backup restaurado com sucesso!');
+    } catch (err) {
+      console.error('Erro ao ler arquivo de backup:', err);
+      alert('Falha ao processar o arquivo de backup. Formato JSON invalido.');
+    }
+  };
+  reader.readAsText(file);
+}
