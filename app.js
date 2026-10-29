@@ -906,15 +906,25 @@ let notifiedBlockEnds = JSON.parse(localStorage.getItem("planner_notified_ends")
 let promptActiveBlock = null;
 
 function checkTaskCompletionAlarm(now) {
+  // 1. Alarme só monitora tarefas do dia de hoje
+  if (selectedViewDate !== getTodayDateString()) return;
+
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
   blocks.forEach(b => {
     const endM = timeStringToMinutes(b.endTime);
-    // Dispara quando o horário do dia atinge ou passa o fim da tarefa (dentro da tolerância de até 2 minutos)
+
+    // As notificações devem disparar ESTRITAMENTE no final do bloco (endTime), NUNCA no início (startTime).
+    // Se o horário atual ainda não alcançou o fim do bloco, ignora
+    if (currentMinutes < endM) {
+      return;
+    }
+
+    // Dispara no minuto de término da tarefa (tolerância de até 1 minuto para garantir detecção)
     const diff = currentMinutes - endM;
     const notificationKey = `${b.id}_${b.endTime}_${now.toDateString()}`;
 
-    if (diff >= 0 && diff <= 3 && !notifiedBlockEnds.includes(notificationKey)) {
+    if (diff >= 0 && diff <= 1 && !notifiedBlockEnds.includes(notificationKey)) {
       notifiedBlockEnds.push(notificationKey);
       localStorage.setItem("planner_notified_ends", JSON.stringify(notifiedBlockEnds));
       triggerTaskEndPrompt(b);
@@ -925,15 +935,31 @@ function checkTaskCompletionAlarm(now) {
 function triggerTaskEndPrompt(block) {
   promptActiveBlock = block;
   const modal = document.getElementById("taskCompletePromptModal");
+  const modalTitle = document.getElementById("promptModalTitle");
   const taskName = document.getElementById("promptTaskName");
   const taskTime = document.getElementById("promptTaskTime");
 
+  if (modalTitle) {
+    modalTitle.textContent = "Fim da Tarefa!";
+  }
   taskName.textContent = block.title;
-  taskTime.textContent = `${block.startTime} — ${block.endTime} (${formatMinutesExact(block.actualMinutes || block.duration || 60)})`;
+  taskTime.textContent = `Término às ${block.endTime} (${block.startTime} — ${block.endTime})`;
 
   SoundFx.alarm();
   modal.classList.add("active");
   modal.setAttribute("aria-hidden", "false");
+
+  // Dispara Notificação nativa do sistema/navegador se o usuário tiver concedido permissão
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      new Notification(`Fim da Tarefa: ${block.title}`, {
+        body: `O bloco agendado terminou às ${block.endTime}. Conseguiu concluir esta tarefa?`,
+        icon: "manifest.json"
+      });
+    } catch (e) {
+      console.warn("Web Notification falhou:", e);
+    }
+  }
 }
 
 function closeTaskEndPrompt() {
@@ -943,6 +969,54 @@ function closeTaskEndPrompt() {
     modal.setAttribute("aria-hidden", "true");
   }
   promptActiveBlock = null;
+}
+
+// Atualiza a linha do relógio ao vivo na timeline com indicador de hora em cima
+function updateTimelineNowIndicator(now = new Date()) {
+  const lineEl = document.getElementById("timelineNowIndicator");
+  const badgeEl = document.getElementById("timelineNowBadge");
+  const badgeText = document.getElementById("timelineNowBadgeText");
+  if (!lineEl || !badgeEl || !badgeText) return;
+
+  // Só exibe no dia de hoje
+  if (selectedViewDate !== getTodayDateString()) {
+    lineEl.style.display = "none";
+    return;
+  }
+
+  const cycleStartMin = timeStringToMinutes(dayConfig.startTime);
+  const cycleEndMin = timeStringToMinutes(dayConfig.endTime);
+  const totalCycleMin = Math.max(30, cycleEndMin - cycleStartMin);
+
+  const currentDayMinutes = now.getHours() * 60 + now.getMinutes() + (now.getSeconds() / 60);
+
+  // Se o horário estiver fora dos limites do ciclo do dia, oculta a linha
+  if (currentDayMinutes < cycleStartMin || currentDayMinutes > cycleEndMin) {
+    lineEl.style.display = "none";
+    return;
+  }
+
+  const pct = Math.max(0, Math.min(100, ((currentDayMinutes - cycleStartMin) / totalCycleMin) * 100));
+  lineEl.style.display = "block";
+  lineEl.style.left = `${pct.toFixed(2)}%`;
+
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  badgeText.textContent = `${hh}:${mm}`;
+
+  // Ajusta alinhamento do badge nas extremidades para não vazar a borda
+  if (pct < 4) {
+    badgeEl.style.left = "0";
+    badgeEl.style.transform = "translateX(0)";
+  } else if (pct > 96) {
+    badgeEl.style.left = "auto";
+    badgeEl.style.right = "0";
+    badgeEl.style.transform = "translateX(0)";
+  } else {
+    badgeEl.style.left = "50%";
+    badgeEl.style.right = "auto";
+    badgeEl.style.transform = "translateX(-50%)";
+  }
 }
 
 // Atualiza o preenchimento das barras de progresso na timeline a cada segundo
@@ -999,6 +1073,9 @@ function startLiveClock() {
 
     // Atualiza o preenchimento temporal dos blocos da timeline
     updateTimelineProgressBars(now);
+
+    // Atualiza a linha do relógio ao vivo na timeline com indicador de hora no topo
+    updateTimelineNowIndicator(now);
 
     // Checa alarme de término de tarefa
     checkTaskCompletionAlarm(now);
@@ -1130,6 +1207,7 @@ function renderAll() {
   recalculateTimelineSchedule();
   renderRulerTicks();
   renderTimeline();
+  updateTimelineNowIndicator();
   renderMetrics();
   renderStagedList();
   renderBlocksList();
@@ -3556,6 +3634,13 @@ function setupEvents() {
       closeTaskEndPrompt();
     });
   }
+
+  // Solicita permissão para notificações do navegador na primeira interação do usuário
+  document.addEventListener("click", () => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, { once: true });
 }
 
 // Registrar Service Worker para PWA (Android / Navegador offline)
