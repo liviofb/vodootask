@@ -119,6 +119,7 @@ body {
   justify-content: center;
   align-items: flex-start;
   overflow-x: hidden;
+  zoom: 1.5;
 }
 
 .app-container {
