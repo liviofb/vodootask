@@ -3597,6 +3597,7 @@ function exportFullBackup() {
     const backupData = {
       version: 'vodootask_backup_v1',
       exportedAt: new Date().toISOString(),
+      selectedViewDate: selectedViewDate || getTodayDateString(),
       taskLibrary: taskLibrary || [],
       dayConfigs: {},
       dayBlocks: {},
@@ -3670,34 +3671,42 @@ function importFullBackup(file) {
         return;
       }
 
-      if (!confirm('Deseja realmente restaurar este backup? Suas tarefas atuais serao sincronizadas e mescladas com os dados do arquivo.')) {
+      if (!confirm('Deseja restaurar este backup? ATENCAO: Todas as tarefas e configuracoes atuais serao totalmente substituidas pelas do arquivo importado.')) {
         return;
       }
 
-      // Restaura Biblioteca
-      if (Array.isArray(data.taskLibrary)) {
-        taskLibrary = data.taskLibrary;
-        localStorage.setItem('planner_task_library_v1', JSON.stringify(taskLibrary));
+      // 1. Limpa completamente todos os dados anteriores do planejador no localStorage (Sobrescrita total)
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('planner_') || k === 'planner_blocks_clean' || k === 'planner_staged_blocks_clean')) {
+          keysToRemove.push(k);
+        }
       }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
 
-      // Restaura Dias no LocalStorage
-      if (data.dayBlocks) {
+      // 2. Restaura Biblioteca de Modelos
+      taskLibrary = Array.isArray(data.taskLibrary) ? data.taskLibrary : [];
+      localStorage.setItem('planner_task_library_v1', JSON.stringify(taskLibrary));
+
+      // 3. Restaura todas as tarefas de cada dia e historicos no localStorage
+      if (data.dayBlocks && typeof data.dayBlocks === 'object') {
         Object.keys(data.dayBlocks).forEach(d => {
           localStorage.setItem('planner_blocks_' + d, JSON.stringify(data.dayBlocks[d]));
         });
       }
-      if (data.dayStaged) {
+      if (data.dayStaged && typeof data.dayStaged === 'object') {
         Object.keys(data.dayStaged).forEach(d => {
           localStorage.setItem('planner_staged_' + d, JSON.stringify(data.dayStaged[d]));
         });
       }
-      if (data.dayConfigs) {
+      if (data.dayConfigs && typeof data.dayConfigs === 'object') {
         Object.keys(data.dayConfigs).forEach(d => {
           localStorage.setItem('planner_day_config_' + d, JSON.stringify(data.dayConfigs[d]));
         });
       }
 
-      // Restaura SQLite se presente
+      // 4. Sobrescreve o SQLite via IndexedDB
       if (data.sqliteBase64 && typeof initSqlJs === 'function') {
         try {
           const binaryString = atob(data.sqliteBase64);
@@ -3709,15 +3718,32 @@ function importFullBackup(file) {
           sqliteDb = new SQL.Database(bytes);
           await saveSqliteBytesToIndexedDB(bytes);
         } catch (sqlErr) {
-          console.warn('Aviso: falha ao reconstruir binario SQLite, mantendo restauracao via LocalStorage:', sqlErr);
+          console.warn('Aviso ao reconstruir SQLite binario, persistindo via estado LocalStorage:', sqlErr);
         }
       }
 
-      // Recarrega estado do dia ativo
+      // 5. Restaura data alvo e recarrega os dados imediatamente na interface
+      const targetDate = data.selectedViewDate || selectedViewDate || getTodayDateString();
+      selectedViewDate = targetDate;
+
+      // Se o SQLite estiver ativo mas o arquivo importado for de um formato antigo sem binario, repopula o SQLite
+      if (sqliteDb && !data.sqliteBase64) {
+        try {
+          sqliteDb.run('DELETE FROM tasks; DELETE FROM day_config; DELETE FROM task_library;');
+        } catch (_) {}
+      }
+
+      // Carrega o dia selecionado e atualiza toda a timeline, espera e metricas
       loadStateFromSQLite(selectedViewDate);
+      saveAll();
+      updateCalendarDateIndicator();
+      renderAll();
+      syncDayInputs();
+      renderHoursHeader();
+
       closeBackupModal();
       SoundFx.success();
-      showNotificationFeedback('Backup restaurado com sucesso!');
+      showNotificationFeedback('Backup restaurado! Tudo foi sobrescrito com sucesso.');
     } catch (err) {
       console.error('Erro ao ler arquivo de backup:', err);
       alert('Falha ao processar o arquivo de backup. Formato JSON invalido.');
