@@ -1429,6 +1429,7 @@ select:focus, input[type="text"]:focus, input[type="time"]:focus {
   align-items: center;
   justify-content: center;
   padding: 16px;
+  overflow-y: auto;
   z-index: 1000;
   opacity: 0;
   pointer-events: none;
@@ -1476,6 +1477,7 @@ select:focus, input[type="text"]:focus, input[type="time"]:focus {
 #editBlockModal .modal-dialog {
   max-height: none;
   overflow: visible;
+  clip-path: none;
 }
 
 #editBlockModal .modal-body {
