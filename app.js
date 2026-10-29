@@ -3621,6 +3621,21 @@ function exportFullBackup() {
       }
     };
 
+    // Se o SQLite estiver disponível, extrai também todos os dias registrados nas tabelas SQLite para o JSON
+    if (sqliteDb) {
+      try {
+        const allDaysRes = sqliteDb.exec('SELECT DISTINCT day_date FROM tasks UNION SELECT DISTINCT day_date FROM day_config');
+        if (allDaysRes.length > 0 && allDaysRes[0].values) {
+          allDaysRes[0].values.forEach(row => {
+            const d = row[0];
+            if (!d) return;
+            if (!backupData.dayBlocks[d]) backupData.dayBlocks[d] = [];
+            if (!backupData.dayStaged[d]) backupData.dayStaged[d] = [];
+          });
+        }
+      } catch (_) {}
+    }
+
     // Garante dia atual no dump
     backupData.dayBlocks[selectedViewDate] = blocks;
     backupData.dayStaged[selectedViewDate] = stagedBlocks;
@@ -3737,11 +3752,60 @@ function importFullBackup(file) {
         } catch (_) {}
       }
 
+      // Se o SQLite está disponível, popula todas as tabelas a partir dos dados do JSON para garantir integridade total
+      if (sqliteDb) {
+        try {
+          sqliteDb.run('DELETE FROM tasks; DELETE FROM day_config; DELETE FROM task_library;');
+          // Salva day_configs do JSON
+          if (data.dayConfigs) {
+            const insCfg = sqliteDb.prepare('INSERT OR REPLACE INTO day_config (day_date, start_time, end_time) VALUES (?, ?, ?)');
+            Object.keys(data.dayConfigs).forEach(d => {
+              const c = data.dayConfigs[d];
+              if (c && c.startTime && c.endTime) insCfg.run([d, c.startTime, c.endTime]);
+            });
+            insCfg.free();
+          }
+          // Salva todas as tasks (timeline e staged) de cada dia
+          const insTask = sqliteDb.prepare('INSERT OR REPLACE INTO tasks (id, day_date, title, category, color, icon, duration, actual_minutes, start_time, end_time, status, locked, template_id, subtasks_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+          if (data.dayBlocks) {
+            Object.keys(data.dayBlocks).forEach(d => {
+              const arr = data.dayBlocks[d];
+              if (Array.isArray(arr)) {
+                arr.forEach(b => {
+                  insTask.run([b.id, d, b.title, b.category || 'geral', b.color || '#FF4500', b.icon || '', b.duration || 60, b.actualMinutes || b.duration || 60, b.startTime || '', b.endTime || '', 'timeline', b.locked ? 1 : 0, b.templateId || null, JSON.stringify(b.subtasks || [])]);
+                });
+              }
+            });
+          }
+          if (data.dayStaged) {
+            Object.keys(data.dayStaged).forEach(d => {
+              const arr = data.dayStaged[d];
+              if (Array.isArray(arr)) {
+                arr.forEach(b => {
+                  insTask.run([b.id, d, b.title, b.category || 'geral', b.color || '#FF4500', b.icon || '', b.duration || 60, b.actualMinutes || b.duration || 60, '', '', 'staged', 0, b.templateId || null, JSON.stringify(b.subtasks || [])]);
+                });
+              }
+            });
+          }
+          insTask.free();
+          // Salva task_library
+          if (Array.isArray(taskLibrary)) {
+            const insLib = sqliteDb.prepare('INSERT OR REPLACE INTO task_library (id, title, color, icon, duration, subtasks_json, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+            taskLibrary.forEach(tpl => {
+              insLib.run([tpl.id, tpl.title, tpl.color || '#FF4500', tpl.icon || '', tpl.duration || 60, JSON.stringify(tpl.subtasks || []), tpl.savedAt || new Date().toISOString()]);
+            });
+            insLib.free();
+          }
+          // Persiste SQLite binário no IndexedDB
+          const binaryDb = sqliteDb.export();
+          await saveSqliteBytesToIndexedDB(binaryDb);
+        } catch (populateErr) {
+          console.warn('Erro ao popular tabelas SQLite:', populateErr);
+        }
+      }
+
       // Carrega o dia selecionado e atualiza toda a timeline, espera e metricas
       loadStateFromSQLite(selectedViewDate);
-      // Garante que o SQLite e LocalStorage estejam 100% alinhados
-      persistToSQLite();
-      saveAll();
       updateCalendarDateIndicator();
       renderAll();
       syncDayInputs();
@@ -3750,6 +3814,10 @@ function importFullBackup(file) {
       closeBackupModal();
       SoundFx.success();
       showNotificationFeedback('Backup restaurado! Tudo foi sobrescrito com sucesso.');
+      // Força recarregamento limpo da interface após breve feedback
+      setTimeout(() => {
+        window.location.reload();
+      }, 350);
     } catch (err) {
       console.error('Erro ao ler arquivo de backup:', err);
       alert('Falha ao processar o arquivo de backup. Formato JSON invalido.');
