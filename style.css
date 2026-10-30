@@ -832,24 +832,13 @@ body {
   flex-shrink: 0;
   transform: rotate(45deg);
 }
-  display: inline-block;
-  flex-shrink: 0;
-}
 
 .timeline-subtask-pill.completed .subtask-pill-dot {
   background: #FFFFFF;
 }
-  overflow: hidden;
-  text-overflow: ellipsis;
-  letter-spacing: -0.5px;
-}
 
 .timeline-durations {
-  position: relative;
-  width: 100%;
-  height: 28px;
-  margin-top: 10px;
-  margin-bottom: 24px;
+  display: none;
 }
 
 .timeline-block.is-active-running {
@@ -1012,6 +1001,12 @@ body {
   height: 2px;
   background-color: #262626;
   margin: 18px 0;
+}
+
+/* Espaçamento dedicado na timeline para o relógio ao vivo não sobrepor a linha divisória */
+.timeline-card .divider {
+  margin-top: 44px;
+  margin-bottom: 22px;
 }
 
 /* Métricas Resumo - Estilo "TOTAL EXP / STATS" Persona 5 com Escadinha Escalonada */
