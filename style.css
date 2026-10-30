@@ -1005,8 +1005,8 @@ body {
 
 /* Espaçamento dedicado na timeline para o relógio ao vivo não sobrepor a linha divisória */
 .timeline-card .divider {
-  margin-top: 44px;
-  margin-bottom: 22px;
+  margin-top: 32px;
+  margin-bottom: 20px;
 }
 
 /* Métricas Resumo - Estilo "TOTAL EXP / STATS" Persona 5 com Escadinha Escalonada */
