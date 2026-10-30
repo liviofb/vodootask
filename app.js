@@ -733,7 +733,18 @@ function applyCollisionPush(movingBlockId) {
   if (blocks.length <= 1) return;
 
   const targetBlock = blocks.find(b => b.id === movingBlockId);
-  if (!targetBlock) return;
+  if (!targetBlock || targetBlock.locked) return; // Bloco travado não se move nem é empurrado
+
+  // Snapshot imutável de todos os blocos bloqueados para blindagem total contra alterações
+  const lockedSnapshots = new Map();
+  blocks.filter(b => b.locked).forEach(b => {
+    lockedSnapshots.set(b.id, {
+      startTime: b.startTime,
+      endTime: b.endTime,
+      duration: b.duration,
+      actualMinutes: b.actualMinutes
+    });
+  });
 
   // 1. Ordena os outros blocos pelo horário de início original
   const otherBlocks = blocks.filter(b => b.id !== movingBlockId);
@@ -759,12 +770,21 @@ function applyCollisionPush(movingBlockId) {
     let bStart = timeStringToMinutes(b.startTime);
     let bDur = Math.max(5, (b.duration || 60));
 
+    // Determina o limite máximo permitido: se houver um bloco travado à frente, para nele
+    let maxAllowedBoundary = cycleEndMin;
+    for (let j = i + 1; j < rightBlocks.length; j++) {
+      if (rightBlocks[j].locked) {
+        maxAllowedBoundary = timeStringToMinutes(rightBlocks[j].startTime);
+        break;
+      }
+    }
+
     if (bStart < currentBoundaryRight) {
       bStart = currentBoundaryRight;
       let bEnd = bStart + bDur;
 
-      if (bEnd > cycleEndMin) {
-        bEnd = cycleEndMin;
+      if (bEnd > maxAllowedBoundary) {
+        bEnd = maxAllowedBoundary;
         bStart = Math.max(cycleStartMin, bEnd - bDur);
       }
 
@@ -805,12 +825,21 @@ function applyCollisionPush(movingBlockId) {
     let bEnd = timeStringToMinutes(b.endTime);
     let bDur = Math.max(5, (b.duration || 60));
 
+    // Determina o limite mínimo permitido: se houver um bloco travado atrás, para nele
+    let minAllowedBoundary = cycleStartMin;
+    for (let j = i - 1; j >= 0; j--) {
+      if (leftBlocks[j].locked) {
+        minAllowedBoundary = timeStringToMinutes(leftBlocks[j].endTime);
+        break;
+      }
+    }
+
     if (bEnd > currentBoundaryLeft) {
       bEnd = currentBoundaryLeft;
       let bStart = bEnd - bDur;
 
-      if (bStart < cycleStartMin) {
-        bStart = cycleStartMin;
+      if (bStart < minAllowedBoundary) {
+        bStart = minAllowedBoundary;
         bEnd = bStart + bDur;
       }
 
@@ -824,7 +853,7 @@ function applyCollisionPush(movingBlockId) {
     }
   }
 
-  // Se o empurrão à esquerda bateu no início do dia, ajusta o targetBlock
+  // Se o empurrão à esquerda bateu no início do dia ou em bloco travado, ajusta o targetBlock
   if (leftBlocks.length > 0) {
     const lastLeft = leftBlocks[leftBlocks.length - 1];
     const lastLeftEnd = timeStringToMinutes(lastLeft.endTime);
@@ -839,8 +868,20 @@ function applyCollisionPush(movingBlockId) {
     }
   }
 
-  // Sincroniza subtarefas de todos os blocos cujo tamanho possa ter mudado
+  // Restaura e garante a integridade absoluta dos blocos travados
+  lockedSnapshots.forEach((snap, id) => {
+    const lockedB = blocks.find(b => b.id === id);
+    if (lockedB) {
+      lockedB.startTime = snap.startTime;
+      lockedB.endTime = snap.endTime;
+      lockedB.duration = snap.duration;
+      lockedB.actualMinutes = snap.actualMinutes;
+    }
+  });
+
+  // Sincroniza subtarefas de blocos NÃO travados cujo tamanho possa ter mudado
   blocks.forEach(b => {
+    if (b.locked) return; // Bloco bloqueado nunca é alterado
     const s = timeStringToMinutes(b.startTime);
     const e = timeStringToMinutes(b.endTime);
     b.actualMinutes = Math.max(5, e - s);
@@ -874,7 +915,11 @@ function recalculateTimelineSchedule() {
     const curEnd = timeStringToMinutes(blocks[i].endTime);
     const nextStart = timeStringToMinutes(blocks[i + 1].startTime);
     if (curEnd > nextStart) {
-      applyCollisionPush(blocks[i].id);
+      if (blocks[i].locked) {
+        applyCollisionPush(blocks[i + 1].id);
+      } else {
+        applyCollisionPush(blocks[i].id);
+      }
       break;
     }
   }
@@ -1964,7 +2009,18 @@ function applyDynamicShrinkResize(resizingId, direction, desiredMinutes) {
   const cycleEndMin = timeStringToMinutes(dayConfig.endTime);
 
   const block = blocks.find(b => b.id === resizingId);
-  if (!block) return;
+  if (!block || block.locked) return; // Bloco travado não pode ser redimensionado
+
+  // Blindagem: preserva o snapshot exato de todos os blocos travados
+  const lockedSnapshots = new Map();
+  blocks.filter(b => b.locked).forEach(b => {
+    lockedSnapshots.set(b.id, {
+      startTime: b.startTime,
+      endTime: b.endTime,
+      duration: b.duration,
+      actualMinutes: b.actualMinutes
+    });
+  });
 
   // Ordena os blocos por ordem cronológica
   blocks.sort((a, b) => timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime));
@@ -1979,8 +2035,17 @@ function applyDynamicShrinkResize(resizingId, direction, desiredMinutes) {
       const nextStart = timeStringToMinutes(nextBlock.startTime);
       const nextEnd = timeStringToMinutes(nextBlock.endTime);
 
-      if (newEnd > nextStart) {
-        // Expandindo sobre o próximo bloco: encolhe o próximo bloco (limite mín. 5m)
+      if (nextBlock.locked) {
+        // BLOCO SEGUINTE BLOQUEADO: NÃO PODE SER REDIMENSIONADO NEM ENCOLHIDO!
+        // O bloco atual só pode se expandir até encostar no início do bloco bloqueado.
+        newEnd = Math.min(newEnd, nextStart);
+        newEnd = Math.max(blockStart + 5, newEnd);
+
+        block.endTime = minutesToTimeString(newEnd);
+        block.duration = newEnd - blockStart;
+        block.actualMinutes = block.duration;
+      } else if (newEnd > nextStart) {
+        // Expandindo sobre o próximo bloco desbloqueado: encolhe o próximo bloco (limite mín. 5m)
         const maxAllowedEnd = nextEnd - 5;
         newEnd = Math.min(newEnd, maxAllowedEnd);
         newEnd = Math.max(blockStart + 5, newEnd);
@@ -2024,8 +2089,17 @@ function applyDynamicShrinkResize(resizingId, direction, desiredMinutes) {
       const prevStart = timeStringToMinutes(prevBlock.startTime);
       const prevEnd = timeStringToMinutes(prevBlock.endTime);
 
-      if (newStart < prevEnd) {
-        // Expandindo para trás sobre o bloco anterior: comprime o anterior (limite mín. 5m)
+      if (prevBlock.locked) {
+        // BLOCO ANTERIOR BLOQUEADO: NÃO PODE SER REDIMENSIONADO NEM ENCOLHIDO!
+        // O bloco atual só pode se expandir para trás até encostar no término do bloco bloqueado.
+        newStart = Math.max(newStart, prevEnd);
+        newStart = Math.min(blockEnd - 5, newStart);
+
+        block.startTime = minutesToTimeString(newStart);
+        block.duration = blockEnd - newStart;
+        block.actualMinutes = block.duration;
+      } else if (newStart < prevEnd) {
+        // Expandindo para trás sobre o bloco anterior desbloqueado: comprime o anterior (limite mín. 5m)
         const minAllowedStart = prevStart + 5;
         newStart = Math.max(newStart, minAllowedStart);
         newStart = Math.min(blockEnd - 5, newStart);
@@ -2061,7 +2135,18 @@ function applyDynamicShrinkResize(resizingId, direction, desiredMinutes) {
     }
   }
 
-  // Recalcula subtarefas do bloco atual
+  // Garante que nenhum bloco travado sofreu qualquer alteração
+  lockedSnapshots.forEach((snap, id) => {
+    const lockedB = blocks.find(b => b.id === id);
+    if (lockedB) {
+      lockedB.startTime = snap.startTime;
+      lockedB.endTime = snap.endTime;
+      lockedB.duration = snap.duration;
+      lockedB.actualMinutes = snap.actualMinutes;
+    }
+  });
+
+  // Recalcula subtarefas apenas do bloco atual redimensionado
   if (block.subtasks && block.subtasks.length > 0) {
     block.subtasks.forEach(s => {
       if (s.percentage !== undefined && s.percentage !== null) {
@@ -2090,12 +2175,14 @@ function setupResizeHandles() {
     const blockEl = handle.closest(".timeline-block");
     if (!blockEl) return;
 
+    const block = blocks.find(b => b.id === blockEl.dataset.id);
+    if (block && block.locked) return; // Bloco travado não pode ser redimensionado
+
     resizingBlockId = blockEl.dataset.id;
     resizeDirection = handle.classList.contains("resize-handle-left") ? "left" : "right";
     isResizing = true;
     resizeStartX = e.clientX;
 
-    const block = blocks.find(b => b.id === resizingBlockId);
     if (block) {
       resizeOriginalStartMin = timeStringToMinutes(block.startTime);
       resizeOriginalEndMin = timeStringToMinutes(block.endTime);
@@ -2173,12 +2260,14 @@ function setupResizeHandles() {
     const blockEl = handle.closest(".timeline-block");
     if (!blockEl) return;
 
+    const block = blocks.find(b => b.id === blockEl.dataset.id);
+    if (block && block.locked) return; // Bloco travado não pode ser redimensionado
+
     resizingBlockId = blockEl.dataset.id;
     resizeDirection = handle.classList.contains("resize-handle-left") ? "left" : "right";
     isResizing = true;
     resizeStartX = touch.clientX;
 
-    const block = blocks.find(b => b.id === resizingBlockId);
     if (block) {
       resizeOriginalStartMin = timeStringToMinutes(block.startTime);
       resizeOriginalEndMin = timeStringToMinutes(block.endTime);
