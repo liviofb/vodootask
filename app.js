@@ -1016,12 +1016,18 @@ function closeTaskEndPrompt() {
   promptActiveBlock = null;
 }
 
-// Atualiza a linha do relógio ao vivo na timeline com indicador de hora em cima
+// Atualiza a linha do relógio ao vivo na timeline com indicador de hora na parte de baixo
 function updateTimelineNowIndicator(now = new Date()) {
   const lineEl = document.getElementById("timelineNowIndicator");
   const badgeEl = document.getElementById("timelineNowBadge");
   const badgeText = document.getElementById("timelineNowBadgeText");
   if (!lineEl || !badgeEl || !badgeText) return;
+
+  // Enquanto estiver redimensionando um bloco, a hora da timeline deve sumir momentaneamente
+  if (isResizing) {
+    lineEl.style.display = "none";
+    return;
+  }
 
   // Só exibe no dia de hoje
   if (selectedViewDate !== getTodayDateString()) {
@@ -2162,6 +2168,47 @@ let resizeStartX = 0;
 let resizeOriginalStartMin = 0;
 let resizeOriginalEndMin = 0;
 
+// Exibe badge momentâneo abaixo do bloco sendo redimensionado com horas e minutos
+function updateResizeBadge(block) {
+  const badgeEl = document.getElementById("timelineResizeBadge");
+  const textEl = document.getElementById("timelineResizeBadgeText");
+  if (!badgeEl || !textEl || !block) return;
+
+  const cycleStartMinutes = timeStringToMinutes(dayConfig.startTime);
+  const cycleEndMinutes = timeStringToMinutes(dayConfig.endTime);
+  const totalCycleMinutes = Math.max(30, cycleEndMinutes - cycleStartMinutes);
+
+  const startM = timeStringToMinutes(block.startTime);
+  const endM = timeStringToMinutes(block.endTime);
+  const durM = Math.max(1, endM - startM);
+  const centerM = startM + (durM / 2);
+
+  const leftPct = Math.max(0, Math.min(100, ((centerM - cycleStartMinutes) / totalCycleMinutes) * 100));
+
+  badgeEl.style.display = "inline-flex";
+  badgeEl.style.left = `${leftPct.toFixed(2)}%`;
+
+  const durFormatted = formatMinutesExact(durM);
+  textEl.innerHTML = `⏱ <strong>${durFormatted}</strong> <span style="opacity: 0.85; margin-left: 4px;">(${block.startTime} — ${block.endTime})</span>`;
+
+  if (leftPct < 10) {
+    badgeEl.classList.add("edge-start");
+    badgeEl.classList.remove("edge-end");
+  } else if (leftPct > 90) {
+    badgeEl.classList.add("edge-end");
+    badgeEl.classList.remove("edge-start");
+  } else {
+    badgeEl.classList.remove("edge-start", "edge-end");
+  }
+}
+
+function hideResizeBadge() {
+  const badgeEl = document.getElementById("timelineResizeBadge");
+  if (badgeEl) {
+    badgeEl.style.display = "none";
+  }
+}
+
 function setupResizeHandles() {
   const track = document.getElementById("timelineTrack");
 
@@ -2186,6 +2233,10 @@ function setupResizeHandles() {
     if (block) {
       resizeOriginalStartMin = timeStringToMinutes(block.startTime);
       resizeOriginalEndMin = timeStringToMinutes(block.endTime);
+      updateResizeBadge(block);
+      // Oculta a hora que corre abaixo da timeline momentaneamente
+      const nowLine = document.getElementById("timelineNowIndicator");
+      if (nowLine) nowLine.style.display = "none";
     }
 
     blockEl.classList.add("resizing");
@@ -2234,6 +2285,11 @@ function setupResizeHandles() {
       }
     }
 
+    updateResizeBadge(block);
+    // Assegura que o relógio ao vivo permaneça oculto durante o redimensionamento
+    const nowLine = document.getElementById("timelineNowIndicator");
+    if (nowLine) nowLine.style.display = "none";
+
     renderTimeline();
     renderMetrics();
     renderBlocksList();
@@ -2247,6 +2303,8 @@ function setupResizeHandles() {
       document.querySelectorAll(".resizing, .resize-handle.active").forEach(el => {
         el.classList.remove("resizing", "active");
       });
+      hideResizeBadge();
+      updateTimelineNowIndicator();
       saveAll();
     }
   });
@@ -2271,6 +2329,10 @@ function setupResizeHandles() {
     if (block) {
       resizeOriginalStartMin = timeStringToMinutes(block.startTime);
       resizeOriginalEndMin = timeStringToMinutes(block.endTime);
+      updateResizeBadge(block);
+      // Oculta a hora que corre abaixo da timeline momentaneamente
+      const nowLine = document.getElementById("timelineNowIndicator");
+      if (nowLine) nowLine.style.display = "none";
     }
 
     blockEl.classList.add("resizing");
@@ -2320,6 +2382,11 @@ function setupResizeHandles() {
       }
     }
 
+    updateResizeBadge(block);
+    // Assegura que o relógio ao vivo permaneça oculto durante o redimensionamento
+    const nowLine = document.getElementById("timelineNowIndicator");
+    if (nowLine) nowLine.style.display = "none";
+
     renderTimeline();
     renderMetrics();
     renderBlocksList();
@@ -2333,6 +2400,8 @@ function setupResizeHandles() {
       document.querySelectorAll(".resizing, .resize-handle.active").forEach(el => {
         el.classList.remove("resizing", "active");
       });
+      hideResizeBadge();
+      updateTimelineNowIndicator();
       saveAll();
     }
   });
