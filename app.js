@@ -1008,20 +1008,26 @@ function updateTimelineNowIndicator(now = new Date()) {
 
   // Ajusta alinhamento do badge nas extremidades para não vazar a borda
   if (pct < 5) {
-    badgeEl.style.left = "0";
-    badgeEl.style.transform = "translateX(0)";
+    badgeEl.classList.add("edge-start");
+    badgeEl.classList.remove("edge-end");
+    badgeEl.style.left = "";
+    badgeEl.style.right = "";
+    badgeEl.style.transform = "";
   } else if (pct > 95) {
-    badgeEl.style.left = "auto";
-    badgeEl.style.right = "0";
-    badgeEl.style.transform = "translateX(0)";
+    badgeEl.classList.add("edge-end");
+    badgeEl.classList.remove("edge-start");
+    badgeEl.style.left = "";
+    badgeEl.style.right = "";
+    badgeEl.style.transform = "";
   } else {
-    badgeEl.style.left = "50%";
-    badgeEl.style.right = "auto";
-    badgeEl.style.transform = "translateX(-50%)";
+    badgeEl.classList.remove("edge-start", "edge-end");
+    badgeEl.style.left = "";
+    badgeEl.style.right = "";
+    badgeEl.style.transform = "";
   }
 }
 
-// Atualiza o preenchimento das barras de progresso e o tempo em tempo real dos blocos na timeline a cada segundo
+// Atualiza o preenchimento das barras de progresso na timeline a cada segundo
 function updateTimelineProgressBars(now) {
   const isToday = (selectedViewDate === getTodayDateString());
   const currentDayMinutes = now.getHours() * 60 + now.getMinutes() + (now.getSeconds() / 60);
@@ -1051,29 +1057,6 @@ function updateTimelineProgressBars(now) {
     const fillEl = blockEl.querySelector(".timeline-block-progress-fill");
     if (fillEl) {
       fillEl.style.width = `${fillPct.toFixed(1)}%`;
-    }
-
-    // Atualiza o indicador de tempo da timeline em tempo real (NÃO mostra hora total fixa do bloco)
-    const durLabel = document.querySelector(`.duration-label[data-block-id="${bId}"]`);
-    if (durLabel) {
-      if (!isToday) {
-        durLabel.style.display = "none";
-      } else if (isCurrentActive) {
-        durLabel.style.display = "block";
-        const elapsedSecTotal = Math.floor((currentDayMinutes - startM) * 60);
-        const elHours = Math.floor(elapsedSecTotal / 3600);
-        const elMin = Math.floor((elapsedSecTotal % 3600) / 60);
-        const elSec = elapsedSecTotal % 60;
-        const timeFormatted = elHours > 0 
-          ? `${String(elHours).padStart(2, "0")}:${String(elMin).padStart(2, "0")}:${String(elSec).padStart(2, "0")}`
-          : `${String(elMin).padStart(2, "0")}:${String(elSec).padStart(2, "0")}`;
-
-        durLabel.textContent = `⏱ ${timeFormatted}`;
-        durLabel.title = `Tempo decorrido em tempo real: ${timeFormatted}`;
-      } else {
-        // Para blocos futuros ou já concluídos, não exibe a hora total fixa do bloco
-        durLabel.style.display = "none";
-      }
     }
   });
 }
@@ -1358,17 +1341,6 @@ function renderTimeline() {
     });
 
     track.appendChild(blockEl);
-
-    // Label de tempo em tempo real embaixo do bloco (NÃO mostra hora total fixa do bloco)
-    if (widthPercent > 4.5) {
-      const durLabel = document.createElement("div");
-      durLabel.className = "duration-label";
-      durLabel.dataset.blockId = block.id;
-      durLabel.style.left = `${leftPercent + (widthPercent / 2)}%`;
-      durLabel.style.display = "none"; // Ativado dinamicamente para o bloco em andamento
-      durLabel.textContent = "";
-      durationsContainer.appendChild(durLabel);
-    }
   });
 
   refreshLucideIcons();
